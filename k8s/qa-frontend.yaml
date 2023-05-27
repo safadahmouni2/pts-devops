@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsqa-frontend
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    matchLabels:
+      app:  ptsqa-frontend
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsqa-frontend
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          env:
+          - name: TZ
+            value: "Africa/Tunis"
+          name: ptsagile-tentun
+          ports:
+           - containerPort: 80
+          lifecycle:
+            postStart:
+              exec:
+               command: ["/bin/sh",
+                         "-c",
+                         'sed -i "s#coreUrl:\"\"#coreUrl: \"http://192.168.0.78:8085\"#g" -i /usr/share/nginx/html/pts-qa/*.js &&
+                         sed -i "s#gatewayUrl:\"\"#gatewayUrl: \"http://192.168.0.164:30019\"#g" -i /usr/share/nginx/html/pts-qa/*.js'
+                        ]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsqa-frontend
+  namespace: ptsagile-tentun
+spec:
+   selector:
+    app: ptsqa-frontend
+   ports:
+   - port: 80
+     protocol: TCP
+     nodePort: 30028
+     targetPort: 80
+   type: LoadBalancer

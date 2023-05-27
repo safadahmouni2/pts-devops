@@ -1,0 +1,15 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ptsagile-config
+  namespace: pts-prod
+data:
+  spring.datasource.url: jdbc:mysql://192.168.0.36:30002/${pts.database.schema-name}?createDatabaseIfNotExist=true&characterEncoding=UTF-8
+  spring.datasource.password: root
+  eureka.client.service-url.defaultZone: http://192.168.0.36:30000/eureka/
+  eureka.client.serviceUrl.defaultZone: http://192.168.0.36:30000/eureka/
+  spring.datasource.driver-class-name: com.mysql.cj.jdbc.Driver
+  ptsagile-api-gateway: http://192.168.0.36:30001
+  ptsagile-service-registry : http://192.168.0.36:30000
+  ptsagile-agile-service: http://192.168.0.36:30002
+  pts.pts-core.base-url: https://pts.thinktank.de/services

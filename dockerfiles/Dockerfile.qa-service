@@ -1,0 +1,12 @@
+FROM openjdk:8-jre-slim
+# Set the working directory to /app
+WORKDIR /app
+
+# Copy the jarr files to the container
+COPY ./pts-services-monorepo/qa-service/target/*.jar /app/qa-service.jar
+
+# Expose port 8091
+EXPOSE 8091
+
+# Set the default command to run the application
+CMD ["java", "-jar", "/app/qa-service.jar"]

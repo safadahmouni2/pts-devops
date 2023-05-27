@@ -1,0 +1,208 @@
+@Library("jenkins-shared-library")
+import com.thinktank.jenkins.steps.*
+def pipelineSteps = new PipelineSteps(this)
+def projectName = pipelineSteps.multiBranchDisplayName()
+def scmSteps = new SCMSteps(this)
+def mvnParams = ""
+def getServerKubernetesProdIp = config.getServerKubernetesProdIp()
+def registryURL = config.getDevopsRegistryUrl()
+def NexusUsername = config.getNexusUsername() 
+def NexusPassword = config.getNexusPassword()
+final def credentialsId = "jenkins.user-username"
+pipeline {
+    agent any
+    options { 
+        skipDefaultCheckout() 
+    }
+
+     environment
+    {
+        NEXUS_VERSION = "nexus3"
+        NEXUS_PROTOCOL = "http"
+        NEXUS_URL = "nexusdevops.thinktank-tt.com:8081"
+        NEXUS_REPOSITORY = "ptsagile-dentun/"
+        NEXUS_CREDENTIAL_ID = "nexus-cred"
+        ARTIFACT_VERSION = "latest"     
+    } 
+
+    tools {
+        maven 'mvn3.3.9'
+        jdk 'jdk-1.8.0_144'
+    }   
+    stages{
+        stage("SCM: Checkout"){
+            steps{
+                script{
+                    cleanWs()
+                    def gitURL = config.getGitUrl() + "ttt/pts/pts-repository.git"
+                    log.outputBanner("Checking out from the SCM")
+                    scmSteps.cloneRepository(gitURL, env.BRANCH_NAME, credentialsId)
+                }
+            }
+        }
+
+        stage('PTS-AGILE Code Quality Check via SonarQube') {
+            steps {
+                script {
+                        log.outputBanner("SonarQube");
+                        def scannerHome = tool 'sonarqube-scanner';
+                            withSonarQubeEnv("sonarqube-test-server") {
+                                sh "${tool("sonarqube-scanner")}/bin/sonar-scanner \
+                                    -Dsonar.projectKey=pts-repository-prod \
+                                    -Dsonar.java.binaries=. "
+                            }
+                        //  sleep(15)
+                        //     timeout(time: 5, unit: 'MINUTES') {
+                        //         def qg = waitForQualityGate()
+                        //         if (qg.status != 'OK') {
+                        //         error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                        //         }
+                        // }
+                    }
+            }
+        } 
+          
+        stage('Build-Backend (jar file)'){
+            steps
+            {
+                sh "cd pts-services-monorepo && mvn clean package" 
+            }
+        }
+
+        stage('Build project Backend (zip file) ') {
+            steps {
+                //sh "apt-get install -y zip"
+                //I comment this code to use this commande if we need it on the new infrastructure
+                sh "cd pts-services-monorepo && zip -j ptsagile-Backend.zip api-gateway/target/*.jar agile-service/target/*.jar service-registry/target/*.jar"
+            }
+        }
+
+        stage('Publish to Nexus Repository Manager') {
+            steps {
+                sh "curl -X DELETE -u $NexusUsername:$NexusPassword http://nexusdevops.thinktank-tt.com:8081/repository/ptsagile-dentun/com/thinktank/pts/ptsagile-dentun/latest/ptsagile-dentun-latest.zip"
+                script { 
+                    pom = readMavenPom file: "pom.xml";
+                    filesByGlob = findFiles(glob: "**/**/*.zip");
+                    artifactPath = filesByGlob[0].path;
+                    artifactExists = fileExists artifactPath;
+                    if(artifactExists) {
+                        nexusArtifactUploader(
+                            nexusVersion: NEXUS_VERSION,
+                            protocol: NEXUS_PROTOCOL,
+                            nexusUrl: NEXUS_URL,
+                            groupId: pom.groupId,
+                            version: ARTIFACT_VERSION,
+                            repository: NEXUS_REPOSITORY,
+                            credentialsId: NEXUS_CREDENTIAL_ID,
+                            artifacts: [
+                                [artifactId: "ptsagile-dentun${mvnParams}",
+                                classifier: '',
+                                file: artifactPath,
+                                type: "zip"]  
+                            ]
+                        );
+                    } else {
+                        error "*** File: ${artifactPath}, could not be found";
+                    }
+                }
+            }
+
+        }
+
+
+        stage("Build-frontend (docker-image)"){
+            steps{
+                script{
+                    log.outputBanner("Build-frontend")
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-frontend-dentun" 
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.frontend", "")
+                    }
+
+                }
+            }
+        }
+
+        stage('PTS-REGISTRY (docker-image)'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-registry-dentun"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.ptsagile-registry", "")
+                    }
+                }
+            }
+        }
+
+        stage('PTS-API-GATEWAY (docker-image)'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-api-gateway-dentun"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.ptsagile-api-gateway", "")
+                    }
+                }
+            }
+        }
+        stage('PTS-SERVICE (docker-image)'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-service-dentun"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.ptsagile-service", "")
+                    }
+                }
+
+            }
+        }
+        stage('PTS-NOTIFIER-SERVICE (docker-image)'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-notifier-service-dentun"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.pts-notifier-service", "")
+                    }
+                }
+                
+            }
+        }
+
+        // stage ('Dependency Track') {
+        //     steps {
+        //         sh 'mvn org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom'
+        //         dependencyTrackPublisher artifact: 'target/bom.xml', projectName: 'pts-qa-testing', projectVersion: '1.0', synchronous: true 
+        //     }}
+
+
+        stage("Cleanup Workspace") {
+            when{
+                 expression{
+                     track.start(this)
+                 }
+            }
+            steps {
+                 script{
+                     log.outputBanner("Cleaning up")
+                     cleanWs()
+                     track.success()
+                 }
+            }
+        }
+    }
+    
+    post{ 
+          
+        failure {
+                sendEmail('ttt.monitoring@thinktank-tunisie.com')
+        }
+
+        unstable {
+                sendEmail('ttt.monitoring@thinktank-tunisie.com')
+        }
+        changed {
+                sendEmail('ttt.monitoring@thinktank-tunisie.com')
+        }
+
+    }
+ 
+}

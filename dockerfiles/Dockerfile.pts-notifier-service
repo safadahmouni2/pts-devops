@@ -1,0 +1,27 @@
+# Use the official Node.js 16 image as the base image
+FROM node:16-alpine as build
+
+# Set the working directory to /app
+WORKDIR /app
+
+
+# Copy the package.json and package-lock.json files to the container
+COPY ./pts-services-monorepo/notifier-service/package*.json ./
+
+# Install dependencies using npm
+RUN npm install
+
+# Copy all the files from the current directory to the container
+COPY ./pts-services-monorepo/notifier-service/ .
+
+# Set the NODE_ENV environment variable to DEV by default
+ENV NODE_ENV=DEV
+# ENV NODE_ENV=TEST
+# ENV NODE_ENV=PROD
+# Compile the code using npm run build
+RUN npm run build
+
+# Expose port 80
+EXPOSE 5000
+# Start the service using npm run start
+CMD ["npm", "run", "start"]

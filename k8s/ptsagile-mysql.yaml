@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsagile-mysql
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    matchLabels:
+      app: ptsagile-mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsagile-mysql
+    spec:
+      containers:
+        - image: mysql:5.7
+          name: ptsagile-mysql
+          ports:
+            - containerPort: 3306
+          env:
+          - name: TZ
+          - name: MYSQL_ROOT_PASSWORD
+            value: root 
+          - name: MYSQL_DATABASE
+            value: root
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsagile-mysql
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    app: ptsagile-mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      nodePort: 30012
+      targetPort: 3306
+  type: LoadBalancer 

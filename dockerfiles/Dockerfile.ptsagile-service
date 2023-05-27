@@ -1,0 +1,12 @@
+FROM openjdk:8-jre-slim
+# Set the working directory to /app
+WORKDIR /app
+
+# Copy the jarr files to the container
+COPY ./pts-services-monorepo/agile-service/target/*.jar /app/agile-service.jar
+
+# Expose port 8091
+EXPOSE 8091
+
+# Set the default command to run the application
+CMD ["java", "-jar", "/app/agile-service.jar"]

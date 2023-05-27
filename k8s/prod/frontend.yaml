@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsagile-frontend
+  namespace: pts-prod
+spec:
+  selector:
+    matchLabels:
+      app:  ptsagile-frontend
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsagile-frontend
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          name: ptsagile-frontend
+          ports:
+           - containerPort: 80
+          lifecycle:
+            postStart:
+              exec:
+               command: ["/bin/sh",
+                         "-c",
+                         'sed -i "s#gatewayUrl:\"\"#gatewayUrl: \"http://192.168.0.36:30001\"#g" -i /usr/share/nginx/html/scrum/*.js &&
+                         sed -i "s#apiNotification:\"\"#apiNotification: \"http://192.168.0.36:30003\"#g" -i /usr/share/nginx/html/scrum/*.js && 
+                         sed -i "s#coreUrl:\"\"#coreUrl: \"https://pts.thinktank.de"#g" -i /usr/share/nginx/html/scrum/*.js'
+                        ]
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsagile-frontend
+  namespace: pts-prod
+spec:
+   selector:
+    app: ptsagile-frontend
+   ports:
+   - port: 80
+     protocol: TCP
+     nodePort: 30005
+     targetPort: 80
+   type: LoadBalancer

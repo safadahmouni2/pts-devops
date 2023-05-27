@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsqa-service
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    matchLabels:
+      app:  ptsqa-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsqa-service
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          name: ptsqa-service
+          ports:
+            - containerPort: 8080
+          env:
+          - name: TZ
+            value: "Africa/Tunis"
+          - name: eureka.client.serviceUrl.defaultZone
+            valueFrom:
+              configMapKeyRef:
+                name: pts-config
+                key: eureka.client.service-url.defaultZone
+          - name: spring.datasource.url
+            valueFrom:
+              configMapKeyRef:
+                name: ptsqa-config
+                key: spring.datasource.url
+          - name: spring.datasource.username
+            value: "root"
+          - name: spring.datasource.password
+            valueFrom:
+              configMapKeyRef:
+                name: ptsqa-config
+                key: spring.datasource.password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsqa-service
+  namespace: ptsagile-tentun
+spec:
+   selector:
+    app: ptsqa-service
+   ports:
+   - port: 8080
+     protocol: TCP
+     nodePort: 30021
+     targetPort: 8080
+   type: LoadBalancer 

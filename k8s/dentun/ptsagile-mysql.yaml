@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsagile-mysql
+  namespace: ptsagile-dentun
+spec:
+  selector:
+    matchLabels:
+      app: ptsagile-mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsagile-mysql
+    spec:
+      containers:
+        - image: mysql:5.7
+          name: ptsagile-mysql
+          ports:
+            - containerPort: 3306
+          env:
+          - name: TZ
+            value: Africa/Tunis
+          - name: MYSQL_ROOT_PASSWORD
+            value: root 
+          - name: MYSQL_DATABASE
+            value: root
+      #     volumeMounts:
+      #     - name: ptsagile-mysql-volume
+      #       mountPath: /var/log
+      # nodeName: kuberdev      
+      # volumes:
+      #   - name: ptsagile-mysql-volume
+      #     hostPath:
+      #       path: /home/external-logs/ptsagile-dentun/mysql/logs
+      #       type: Directory
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsagile-mysql
+  namespace: ptsagile-dentun
+spec:
+  selector:
+    app: ptsagile-mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      nodePort: 30032
+      targetPort: 3306
+  type: LoadBalancer 

@@ -1,0 +1,137 @@
+@Library("jenkins-shared-library")
+import com.thinktank.jenkins.steps.*
+def pipelineSteps = new PipelineSteps(this)
+def projectName = pipelineSteps.multiBranchDisplayName()
+def scmSteps = new SCMSteps(this)
+def mvnParams = ""
+def getServerKubernetesProdIp = config.getServerKubernetesProdIp()
+def registryURL = config.getDevopsRegistryUrl()
+final def credentialsId = "jenkins.user-username"
+pipeline {
+    agent any
+    // triggers {
+    //     cron '''@midnight'''
+    // }
+    options { 
+        //disableConcurrentBuilds()
+        skipDefaultCheckout() 
+        //enforceBuildSchedule()
+    }
+
+    stages{
+        stage("SCM: Checkout"){
+            steps{
+                script{
+                    cleanWs()
+                    def gitURL = config.getGitUrl() + "ttt/pts/pts-repository.git"
+
+                    log.outputBanner("Checking out from the SCM")
+                    scmSteps.cloneRepository(gitURL, env.BRANCH_NAME, credentialsId)
+                }
+            }
+        }
+
+
+            stage('deploy_configmap') {
+            steps {
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-dentun"
+                    def gitYamlPath = "devops/k8s/dentun/configmap.yaml"
+                    sh "scp -rp $gitYamlPath root@$getServerKubernetesProdIp:$kubernetesPath"
+                    sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/configmap.yaml -n ptsagile-dentun"
+                    sh "ssh root@$getServerKubernetesProdIp kubectl apply -f $kubernetesPath/configmap.yaml -n ptsagile-dentun"
+                }    
+            }
+            }
+        stage('deploy_database') {
+            steps {
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-dentun"
+                    def gitYamlPath = "devops/k8s/dentun/ptsagile-mysql.yaml"
+                    sh "scp -rp $gitYamlPath root@$getServerKubernetesProdIp:$kubernetesPath"
+                    sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/ptsagile-mysql.yaml -n ptsagile-dentun"
+                    sh "ssh root@$getServerKubernetesProdIp kubectl apply -f $kubernetesPath/ptsagile-mysql.yaml -n ptsagile-dentun"
+                }    
+            }
+        }
+
+        stage('service-registry') {
+            steps {
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-dentun"
+                    def gitYamlPath = "devops/k8s/dentun"
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-registry-dentun"
+                        sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/service-registry.yaml -n ptsagile-dentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/service-registry.yaml", dockerImage, "$gitYamlPath/service-registry.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+        stage('pts-service') {
+            steps {
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-dentun"
+                    def gitYamlPath = "devops/k8s/dentun"
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-service-dentun"
+                        sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/agile-service.yaml -n ptsagile-dentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/agile-service.yaml", dockerImage, "$gitYamlPath/agile-service.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+        stage('pts-notifier-service') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-dentun"
+                    def gitYamlPath = "devops/k8s/dentun"
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-notifier-service-dentun"
+                        sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/notifier-service.yaml -n ptsagile-dentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/notifier-service.yaml", dockerImage, "$gitYamlPath/notifier-service.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+        stage('pts-api-gateway') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-dentun"
+                    def gitYamlPath = "devops/k8s/dentun"
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-api-gateway-dentun"
+                        sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/api-gateway.yaml -n ptsagile-dentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/api-gateway.yaml", dockerImage, "$gitYamlPath/api-gateway.yaml", kubernetesPath)  
+                    }
+                }    
+            }
+        }
+        stage('ptsagile-frontend') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-dentun"
+                    def gitYamlPath = "devops/k8s/dentun"
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-frontend-dentun"
+                        sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/frontend.yaml -n ptsagile-dentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/frontend.yaml", dockerImage, "$gitYamlPath/frontend.yaml", kubernetesPath)
+                      
+                    }
+                    sleep time: 1, unit: 'MINUTES'
+                }    
+            }
+        }
+
+    }
+ 
+}

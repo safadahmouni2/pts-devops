@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsagile-service
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    matchLabels:
+      app:  ptsagile-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsagile-service
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          name: ptsagile-service
+          ports:
+            - containerPort: 8091
+          env:
+          - name: TZ
+            value: Africa/Tunis
+          - name: eureka.client.serviceUrl.defaultZone
+            valueFrom:
+              configMapKeyRef:
+                name: pts-config
+                key: eureka.client.service-url.defaultZone
+          - name: spring.datasource.url
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: spring.datasource.url
+          - name: spring.datasource.username
+            value: "root"
+          - name: spring.datasource.password
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: spring.datasource.password
+          - name: ptsagile-service
+            valueFrom:
+              configMapKeyRef:
+                name: pts-config
+                key: ptsagile-service
+          - name: pts.pts-core.base-url
+            valueFrom:
+              configMapKeyRef:
+                name: pts-config
+                key: pts.pts-core.base-url
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsagile-service
+  namespace: ptsagile-tentun
+spec:
+   selector:
+    app: ptsagile-service
+   ports:
+   - port: 8091
+     protocol: TCP
+     nodePort: 30013
+     targetPort: 8091
+   type: LoadBalancer 

@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ptsagile-api-gateway
+  namespace: ptsagile-dentun
+spec:
+  selector:
+    matchLabels:
+      app:  ptsagile-api-gateway
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsagile-api-gateway
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          name: ptsagile-api-gateway
+          ports:
+           - containerPort: 8087
+          env:
+          - name: TZ
+            value: Africa/Tunis
+          - name: eureka.client.serviceUrl.defaultZone
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: eureka.client.service-url.defaultZone
+          - name: spring.datasource.url
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: spring.datasource.url
+          - name: spring.datasource.username
+            value: "root"
+          - name: spring.datasource.password
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: spring.datasource.password
+          - name: ptsagile-api-gateway
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: ptsagile-api-gateway
+      #     volumeMounts:
+      #     - name: pts-api-gateway-volume
+      #       mountPath: /app/logs
+      # nodeName: kuberdev      
+      # volumes:
+      #   - name: pts-api-gateway-volume
+      #     hostPath:
+      #       path: /home/external-logs/ptsagile-dentun/api-gateway/logs
+      #       type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsagile-api-gateway
+  namespace: ptsagile-dentun
+spec:
+   selector:
+    app: ptsagile-api-gateway
+   ports:
+   - port: 8087
+     protocol: TCP
+     nodePort: 30039
+     targetPort: 8087
+   type: LoadBalancer

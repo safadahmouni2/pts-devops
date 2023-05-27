@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: pts-notifier-service
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    matchLabels:
+      app:  pts-notifier-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: pts-notifier-service
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          name: pts-notifier-service
+          env:
+          - name: TZ
+            value: Africa/Tunis
+          ports:
+           - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pts-notifier-service
+  namespace: ptsagile-tentun
+spec:
+   selector:
+    app: pts-notifier-service
+   ports:
+   - port: 5000
+     protocol: TCP
+     nodePort: 30020
+     targetPort: 5000
+   type: LoadBalancer

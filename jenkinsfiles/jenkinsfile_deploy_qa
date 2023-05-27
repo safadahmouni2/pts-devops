@@ -1,0 +1,100 @@
+@Library("jenkins-shared-library")
+import com.thinktank.jenkins.steps.*
+def pipelineSteps = new PipelineSteps(this)
+def projectName = pipelineSteps.multiBranchDisplayName()
+def scmSteps = new SCMSteps(this)
+def mvnParams = ""
+def registryURL = config.getDevopsRegistryUrl()
+def NexusUsername = config.getNexusUsername()
+def NexusPassword = config.getNexusPassword()
+final def credentialsId = "jenkins.user-username"
+def getServerKubernetesProdIp = config.getServerKubernetesProdIp()
+
+pipeline {
+    agent any
+    options { disableConcurrentBuilds()
+	          skipDefaultCheckout() 
+	}
+    parameters 
+    {
+       gitParameter name: 'TAG_VERSION', type: 'PT_TAG', defaultValue: 'NONE', branch: env.BRANCH_NAME, tagFilter: "*", branchFilter: ".*", useRepository: 'http://gitlab.thinktank-tt.com/ttt/pts/pts-repository.git'    
+    }
+    
+    stages{
+        stage("SCM: Checkout"){
+            steps{
+                script{
+                    cleanWs()
+                    def gitURL = config.getGitUrl() + "ttt/pts/pts-repository.git"
+                    log.outputBanner("Checking out from the SCM: " + params.get('TAG_VERSION'))
+                    if (params.get('TAG_VERSION') != 'NONE') {
+                    	scmSteps.cloneRepositoryWithTags(gitURL, params.get('TAG_VERSION'), credentialsId)
+                    } else {
+                    	scmSteps.cloneRepository(gitURL, env.BRANCH_NAME, credentialsId)
+                    }
+                }
+            }
+        }
+
+        stage('deploy_configmap QA') {
+            steps {
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-tentun"
+                    def gitYamlPath = "devops/k8s/configmap-qa.yaml"
+                    sh "scp -rp $gitYamlPath root@$getServerKubernetesProdIp:$kubernetesPath"
+                    sh "ssh root@$getServerKubernetesProdIp kubectl apply -f $kubernetesPath/configmap-qa.yaml -n ptsagile-tentun"
+                }    
+            }
+        }
+
+        stage('deploy_mysql_qa-service') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-tentun"
+                    def gitYamlPath = "devops/k8s"
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/pts_qa_mysql_dentun"
+                        //sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/qa-mysql.yaml -n ptsagile-tentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/qa-mysql.yaml", dockerImage, "$gitYamlPath/qa-mysql.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+
+        stage('deploy_qa_service') {
+            steps {
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-tentun"
+                    def gitYamlPath = "devops/k8s"
+                    def version = params.get('TAG_VERSION')
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/qa-service:$version"
+                        //sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/qa-service.yaml -n ptsagile-tentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/qa-service.yaml", dockerImage, "$gitYamlPath/qa-service.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+        stage('deploy_ptsqa-frontend') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/kubernetes_yaml/ptsagile/ptsagile-tentun"
+                    def gitYamlPath = "devops/k8s"
+                    def version = params.get('TAG_VERSION')
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsqa-frontend:$version"
+                        //sh "ssh root@$getServerKubernetesProdIp kubectl delete -f $kubernetesPath/qa-frontend.yaml -n ptsagile-tentun"
+                        pipelineSteps.kubernetesDeploy(getServerKubernetesProdIp, "$kubernetesPath/qa-frontend.yaml", dockerImage, "$gitYamlPath/qa-frontend.yaml", kubernetesPath)
+                      
+                    }
+                    //sleep time: 1, unit: 'MINUTES'
+                }    
+            }
+        }
+    }
+}

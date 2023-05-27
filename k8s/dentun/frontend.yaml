@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsagile-frontend
+  namespace: ptsagile-dentun
+spec:
+  selector:
+    matchLabels:
+      app:  ptsagile-frontend
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsagile-frontend
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          name: ptsagile-dentun
+          env:
+          - name: TZ
+            value: Africa/Tunis
+          ports:
+           - containerPort: 80
+          lifecycle:
+            postStart:
+              exec:
+              #  command: ["/bin/sh",
+              #            "-c",
+              #            "sed -i 's#http://localhost:8087#http://192.168.0.164:30019#g' /usr/share/nginx/html/scrum/*.js && sed -i 's#https://chat.thinktank.de:5000#http://192.168.0.164:30020#g' /usr/share/nginx/html/scrum/*.js "
+              #           ]
+
+
+               command: ["/bin/sh",
+                         "-c",
+                         'sed -i "s#gatewayUrl:\"\"#gatewayUrl: \"http://192.168.0.164:30039\"#g" -i /usr/share/nginx/html/scrum/*.js &&
+                         sed -i "s#apiNotification:\"\"#apiNotification: \"http://192.168.0.164:30030\"#g" -i /usr/share/nginx/html/scrum/*.js && 
+                         sed -i "s#coreUrl:\"\"#coreUrl: \"http://192.168.0.78:8085"#g" -i /usr/share/nginx/html/scrum/*.js'
+                        ]
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsagile-frontend
+  namespace: ptsagile-dentun
+spec:
+   selector:
+    app: ptsagile-frontend
+   ports:
+   - port: 80
+     protocol: TCP
+     nodePort: 30038
+     targetPort: 80
+   type: LoadBalancer

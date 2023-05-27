@@ -1,0 +1,137 @@
+@Library("jenkins-shared-library")
+import com.thinktank.jenkins.steps.*
+def pipelineSteps = new PipelineSteps(this)
+def projectName = pipelineSteps.multiBranchDisplayName()
+def scmSteps = new SCMSteps(this)
+def mvnParams = ""
+def registryURL = config.getDevopsRegistryUrl()
+def NexusUsername = config.getNexusUsername()
+def NexusPassword = config.getNexusPassword()
+final def credentialsId = "jenkins.user-username"
+def getServerKubernetesProdIp = config.getServerKubernetesProdIp()
+def getServerPtsProd = "192.168.0.36"
+
+pipeline {
+    agent any
+    options { disableConcurrentBuilds()
+	          skipDefaultCheckout() 
+	}
+    parameters 
+    {
+       gitParameter name: 'TAG_VERSION', type: 'PT_TAG', defaultValue: 'NONE', branch: env.BRANCH_NAME, tagFilter: "*", branchFilter: ".*", useRepository: 'http://gitlab.thinktank-tt.com/ttt/pts/pts-repository.git'    
+    }
+    
+    stages{
+        stage("SCM: Checkout"){
+            steps{
+                script{
+                    cleanWs()
+                    def gitURL = config.getGitUrl() + "ttt/pts/pts-repository.git"
+                    log.outputBanner("Checking out from the SCM: " + params.get('TAG_VERSION'))
+                    if (params.get('TAG_VERSION') != 'NONE') {
+                    	scmSteps.cloneRepositoryWithTags(gitURL, params.get('TAG_VERSION'), credentialsId)
+                    } else {
+                    	scmSteps.cloneRepository(gitURL, env.BRANCH_NAME, credentialsId)
+                    }
+                }
+            }
+        }
+        stage('Deploy database') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/k8s"
+                    def gitYamlPath = "devops/k8s/prod"
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-database"
+                        pipelineSteps.kubernetesDeploy(getServerPtsProd, "$kubernetesPath/ptsagile-mysql.yaml", dockerImage, "$gitYamlPath/ptsagile-mysql.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+
+        stage('Deploy registry-service') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/k8s"
+                    def gitYamlPath = "devops/k8s/prod"
+                    def version = params.get('TAG_VERSION')
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-registry:$version"
+                        pipelineSteps.kubernetesDeploy(getServerPtsProd, "$kubernetesPath/service-registry.yaml", dockerImage, "$gitYamlPath/service-registry.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+        stage('Deploy agile-service') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/k8s"
+                    def gitYamlPath = "devops/k8s/prod"
+                    def version = params.get('TAG_VERSION')
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-service:$version"
+                        pipelineSteps.kubernetesDeploy(getServerPtsProd, "$kubernetesPath/agile-service.yaml", dockerImage, "$gitYamlPath/agile-service.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+        stage('Deploy notifier-service') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/k8s"
+                    def gitYamlPath = "devops/k8s/prod"
+                    def version = params.get('TAG_VERSION')
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-notifier-service:$version"
+                        pipelineSteps.kubernetesDeploy(getServerPtsProd, "$kubernetesPath/notifier-service.yaml", dockerImage, "$gitYamlPath/notifier-service.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+        stage('Deploy api-gateway') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/k8s"
+                    def gitYamlPath = "devops/k8s/prod"
+                    def version = params.get('TAG_VERSION')
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-api-gateway:$version"
+                        pipelineSteps.kubernetesDeploy(getServerPtsProd, "$kubernetesPath/api-gateway.yaml", dockerImage, "$gitYamlPath/api-gateway.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+        stage('Deploy frontend') {
+            steps {
+                
+                script{
+                    def kubernetesPath = "/home/k8s"
+                    def gitYamlPath = "devops/k8s/prod"
+                    def version = params.get('TAG_VERSION')
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def dockerImage="$registryURL/ptsagile-frontend:$version"
+                        pipelineSteps.kubernetesDeploy(getServerPtsProd, "$kubernetesPath/frontend.yaml", dockerImage, "$gitYamlPath/frontend.yaml", kubernetesPath)
+                      
+                    }
+                }    
+            }
+        }
+
+
+    }
+}

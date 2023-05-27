@@ -1,0 +1,11 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: pts-config
+  namespace: ptsagile-tentun
+data:
+  eureka.client.service-url.defaultZone: http://192.168.0.164:30011/eureka/
+  pts-api-gateway: http://192.168.0.164:30019
+  pts-registry-service: http://192.168.0.164:30011
+  ptsagile-service: http://192.168.0.164:30013
+  pts.pts-core.base-url: http://192.168.0.78:8085/services

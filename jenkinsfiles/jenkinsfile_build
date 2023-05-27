@@ -1,0 +1,225 @@
+@Library("jenkins-shared-library")
+import com.thinktank.jenkins.steps.*
+def pipelineSteps = new PipelineSteps(this)
+def projectName = pipelineSteps.multiBranchDisplayName()
+def scmSteps = new SCMSteps(this)
+def mvnParams = ""
+def registryURL = config.getDevopsRegistryUrl()
+def NexusUsername = config.getNexusUsername()
+def NexusPassword = config.getNexusPassword()
+final def credentialsId = "jenkins.user-username"
+
+pipeline {
+    agent any
+    options { disableConcurrentBuilds()
+	          skipDefaultCheckout() 
+	}
+
+    parameters 
+    {
+       gitParameter name: 'TAG_VERSION', type: 'PT_TAG', defaultValue: 'NONE', branch: env.BRANCH_NAME, tagFilter: "*", branchFilter: ".*", useRepository: 'http://gitlab.thinktank-tt.com/ttt/pts/pts-repository.git'    
+    }
+
+    environment
+    {
+        NEXUS_VERSION = "nexus3"
+        NEXUS_PROTOCOL = "http"
+        NEXUS_URL = "nexusdevops.thinktank-tt.com:8081"
+        NEXUS_REPOSITORY = "pts-agile/"
+		NEXUS_CREDENTIAL_ID = "nexus-cred" 	 	
+    }
+
+
+    tools {
+        maven 'mvn3.3.9'
+        jdk 'jdk-1.8.0_144'
+    } 
+
+    stages{
+        stage("SCM: Checkout"){
+            steps{
+                script{
+                    cleanWs()
+                    def gitURL = config.getGitUrl() + "ttt/pts/pts-repository.git"
+
+                    log.outputBanner("Checking out from the SCM: " + params.get('TAG_VERSION'))
+                    if (params.get('TAG_VERSION') != 'NONE') {
+                    	scmSteps.cloneRepositoryWithTags(gitURL, params.get('TAG_VERSION'), credentialsId)
+                    } else {
+                    	scmSteps.cloneRepository(gitURL, env.BRANCH_NAME, credentialsId)
+                    }
+                }
+            }
+        }
+        stage('Build-Backend '){
+            steps
+            {
+                sh "cd pts-services-monorepo && mvn clean package" 
+            }
+	    }
+
+        stage('Build project Backend (zip file) ') {
+            steps {
+                //sh "apt-get install -y zip"
+                sh "cd pts-services-monorepo && zip -j ptsagile-Backend.zip api-gateway/target/*.jar agile-service/target/*.jar service-registry/target/*.jar"
+            }
+        }
+
+
+        stage('Publish to Nexus Repository ') {
+            steps {
+                //def version = params.get('TAG_VERSION')
+                //sh "curl -X DELETE -u $NexusUsername:$NexusPassword http://nexusdevops.thinktank-tt.com:8081/repository/pts-agile/com/thinktank/pts/ptsagile-backend/${version}/ptsagile-$version-frontend.zip"
+                script {
+                    pom = readMavenPom file: "pts-services-monorepo/pom.xml";
+                    filesByGlob = findFiles(glob: "**/*.zip");
+                    artifactPath = filesByGlob[0].path;
+                    artifactExists = fileExists artifactPath;
+                    if(artifactExists) {
+                        nexusArtifactUploader(
+                            nexusVersion: NEXUS_VERSION,
+                            protocol: NEXUS_PROTOCOL,
+                            nexusUrl: NEXUS_URL,
+                            groupId: pom.groupId,
+                            version: pom.version,
+                            repository: NEXUS_REPOSITORY,
+                            credentialsId: NEXUS_CREDENTIAL_ID,
+                            artifacts: [
+                                [artifactId: "ptsagile-backend${mvnParams}",
+                                classifier: '',
+                                file: artifactPath,
+                                type: "zip"]  
+                            ]
+                        );
+                    } else {
+                        error "*** File: ${artifactPath}, could not be found";
+                    }
+                }
+            }
+        }
+        stage("Build-frontend QA (docker-image)"){
+            steps{
+                script{
+                    log.outputBanner("Build-frontend")
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def version = params.get('TAG_VERSION')
+                        def dockerImage="$registryURL/ptsqa-frontend:$version" 
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.frontend-qa", "")
+                    }
+
+                }
+            }
+        }
+
+        stage('QA-SERVICE'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def version = params.get('TAG_VERSION')
+                        def dockerImage="$registryURL/qa-service:$version"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.qa-service", "")
+                    }
+                }
+
+            }
+        }
+        stage("Build-frontend"){
+            steps{
+                script{
+                    log.outputBanner("Build-frontend")
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def version = params.get('TAG_VERSION')
+                        def dockerImage="$registryURL/ptsagile-frontend:$version" 
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.frontend", "")
+                    }
+
+                }
+            }
+        }
+
+        stage('PTSAGILE-REGISTRY'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def version = params.get('TAG_VERSION')
+                        def dockerImage="$registryURL/ptsagile-registry:$version"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.ptsagile-registry", "")
+                    }
+                }
+                
+            }
+        }
+
+        stage('PTSAGILE-API-GATEWAY'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def version = params.get('TAG_VERSION')
+                        def dockerImage="$registryURL/ptsagile-api-gateway:$version"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.ptsagile-api-gateway", "")
+                    }
+                }
+                
+            }
+        }
+        stage('PTSAGILE-SERVICE'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def version = params.get('TAG_VERSION')
+                        def dockerImage="$registryURL/ptsagile-service:$version"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.ptsagile-service", "")
+                    }
+                }
+                
+            }
+        }
+        
+        stage('PTS-NOTIFIER-SERVICE (docker-image)'){
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: 'ttt-registry', url: "https://$registryURL") {
+                        def version = params.get('TAG_VERSION')
+                        def dockerImage="$registryURL/ptsagile-notifier-service:$version"
+                        pipelineSteps.dockerBuildandPush(dockerImage, "devops/dockerfiles/Dockerfile.pts-notifier-service", "")
+                    }
+                }
+                
+            }
+        }
+
+        stage("Cleanup Workspace") {
+            when{
+                 expression{
+                     track.start(this)
+                 }
+            }
+            steps {
+                 script{
+                     log.outputBanner("Cleaning up")
+                     cleanWs()
+                     track.success()
+                 }
+            }
+        }
+
+        
+	 }
+     
+     post{ 
+          
+      failure {
+                sendEmail('ttt.monitoring@thinktank-tunisie.com')
+            }
+
+             unstable {
+                sendEmail('ttt.monitoring@thinktank-tunisie.com')
+            }
+         changed {
+                sendEmail('ttt.monitoring@thinktank-tunisie.com')
+            }
+
+    }
+         
+    
+}

@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsqa-mysql
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    matchLabels:
+      app: ptsqa-mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsqa-mysql
+    spec:
+      containers:
+        - image: dockerregistrydevops.thinktank-tt.com:5000/pts_qa_mysql_dentun:latest
+          name: mysql-dentun
+          env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: "root"
+          ports:
+            - containerPort: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsqa-mysql
+  namespace: ptsagile-tentun
+spec:
+  selector:
+    app: ptsqa-mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      nodePort: 30022
+      targetPort: 3306
+  type: LoadBalancer 

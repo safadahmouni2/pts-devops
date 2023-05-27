@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata: 
+  name: ptsagile-agile-service
+  namespace: pts-prod
+spec:
+  selector:
+    matchLabels:
+      app:  ptsagile-agile-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ptsagile-agile-service
+    spec:
+      containers:
+        - image:  {{DOCKER_IMAGE}}
+          name: ptsagile-agile-service
+          ports:
+            - containerPort: 8091
+          env:
+          - name: eureka.client.serviceUrl.defaultZone
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: eureka.client.service-url.defaultZone
+          - name: spring.datasource.url
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: spring.datasource.url
+          - name: spring.datasource.username
+            value: "root"
+          - name: spring.datasource.password
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: spring.datasource.password
+          - name: ptsagile-agile-service
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: ptsagile-agile-service
+          - name: pts.pts-core.base-url
+            valueFrom:
+              configMapKeyRef:
+                name: ptsagile-config
+                key: pts.pts-core.base-url
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptsagile-agile-service
+  namespace: pts-prod
+spec:
+   selector:
+    app: ptsagile-agile-service
+   ports:
+   - port: 8091
+     protocol: TCP
+     nodePort: 30004
+     targetPort: 8091
+   type: LoadBalancer

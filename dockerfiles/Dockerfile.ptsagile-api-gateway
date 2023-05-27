@@ -1,0 +1,12 @@
+FROM openjdk:8-jre-slim
+# Set the working directory to /app
+WORKDIR /app
+
+# Copy the jarr files to the container
+COPY ./pts-services-monorepo/api-gateway/target/*.jar /app/api-gateway.jar
+
+# Expose port 8087
+EXPOSE 8087
+
+# Set the default command to run the application
+CMD ["java", "-jar", "/app/api-gateway.jar"]
